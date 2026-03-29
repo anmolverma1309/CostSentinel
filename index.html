@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CostSentinel — Enterprise Spend Intelligence</title>
+<!-- [S3] Content Security Policy (Phase 4) -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:;">
+<!-- [U12] Dynamic SVG Favicon -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,5 95,25 95,75 50,95 5,75 5,25%22 fill=%22%2300e5ff%22/></svg>">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/src/styles/tokens.css">
+<link rel="stylesheet" href="/src/styles/components.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+<!-- SCAN OVERLAY -->
+<div class="scan-overlay" id="scanOverlay" role="dialog" aria-modal="true" aria-label="Scanning System">
+  <div class="scan-ring"></div>
+  <div class="scan-text" id="scanText" aria-live="polite">INITIALIZING AGENTS...</div>
+  <div class="scan-sub" id="scanSub">Connecting to data pipelines</div>
+</div>
+
+<!-- APPROVAL MODAL -->
+<div class="modal-overlay" id="modalOverlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal" id="modal" tabindex="-1">
+    <div class="modal-header">
+      <span class="modal-title" id="modalTitle">⚡ APPROVAL WORKFLOW</span>
+      <button class="modal-close" id="closeModalBtn" aria-label="Close modal">×</button>
+    </div>
+    <div class="modal-body" id="modalBody">
+      <!-- Content populated by JS -->
+    </div>
+    
+    <div class="modal-workflow" id="modalWorkflow" style="display:none; padding: 20px 24px; border-top: 1px solid var(--border); background: var(--surface2);">
+      <div style="font-family:var(--mono); font-size:11px; color:var(--muted); margin-bottom:12px;" aria-hidden="true">APPROVAL ROUTING</div>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <div style="flex:1; background:var(--bg); border:1px solid var(--success); padding:10px; border-radius:6px; text-align:center;">
+          <div style="color:var(--success); font-weight:600; font-size:12px;">Manager</div>
+          <div style="font-size:10px; color:var(--muted)">Approved (Now)</div>
+        </div>
+        <div style="color:var(--muted)">→</div>
+        <div style="flex:1; background:var(--bg); border:1px dashed var(--warn); padding:10px; border-radius:6px; text-align:center;">
+          <div style="color:var(--warn); font-weight:600; font-size:12px;">Director</div>
+          <div style="font-size:10px; color:var(--muted)">Pending</div>
+        </div>
+        <div style="color:var(--muted)">→</div>
+        <div style="flex:1; background:var(--bg); border:1px dashed var(--border); padding:10px; border-radius:6px; text-align:center;">
+          <div style="color:var(--text2); font-weight:600; font-size:12px;">CFO</div>
+          <div style="font-size:10px; color:var(--muted)">Required</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-escalate" id="escalateActionBtn" aria-label="Escalate Approval">↑ Escalate to CFO</button>
+      <button class="btn-approve" id="approveActionBtn" aria-label="Approve Workflow">✓ Approve & Execute</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="alert" aria-live="assertive">
+  <div class="toast-title" id="toastTitle"></div>
+  <div class="toast-body" id="toastBody"></div>
+</div>
+
+<header>
+  <div class="logo">
+    <!-- [U11] Logo Icon SVG -->
+    <svg class="logo-svg" viewBox="0 0 100 100" width="28" height="28" xmlns="http://www.w3.org/2000/svg">
+      <polygon points="50,5 95,25 95,75 50,95 5,75 5,25" fill="none" stroke="var(--accent)" stroke-width="8"/>
+      <circle cx="50" cy="50" r="15" fill="var(--accent)"/>
+    </svg>
+    CostSentinel
+  </div>
+  
+  <!-- [F5] View Tabs -->
+  <div class="nav-tabs" role="tablist">
+    <button class="tab active" data-target="view-spend" role="tab" aria-selected="true">SPEND</button>
+    <button class="tab" data-target="view-sla" role="tab" aria-selected="false">SLA</button>
+    <button class="tab" data-target="view-resources" role="tab" aria-selected="false">RESOURCES</button>
+    <button class="tab" data-target="view-finops" role="tab" aria-selected="false">FINOPS</button>
+  </div>
+
+  <div class="header-right">
+    <button class="btn-secondary" id="exportBtn" aria-label="Export Data Report">↓ EXPORT</button>
+    <div class="status-pill" aria-label="System Status: 4 Agents Active">
+      <div class="status-dot"></div>
+      4 AGENTS ACTIVE
+    </div>
+    <button class="scan-btn" id="mainScanBtn" aria-label="Run System Scan">⟳ RUN DEEP SCAN</button>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- ==================== SPEND VIEW (DEFAULT) ==================== -->
+  <div id="view-spend" class="view-panel active" role="tabpanel">
+    <div class="section-label">FINANCIAL IMPACT DASHBOARD</div>
+    <div class="grid-layout-split" style="grid-template-columns: 3fr 1fr;">
+      
+      <!-- LEFT: KPIs & Charts -->
+      <div style="display:flex; flex-direction:column; gap:20px;">
+        <div class="kpi-strip">
+          <div class="kpi-card warn" aria-label="Leakage Detected">
+            <div class="kpi-label">LEAKAGE DETECTED</div>
+            <div class="kpi-value" id="kpi1">$0</div>
+            <div class="kpi-sub">across 3 categories</div>
+          </div>
+          <div class="kpi-card danger" aria-label="Critical Anomalies">
+            <div class="kpi-label">CRITICAL ANOMALIES</div>
+            <div class="kpi-value" id="kpi2">0</div>
+            <div class="kpi-sub">require immediate action</div>
+          </div>
+          <div class="kpi-card success" aria-label="Recoverable Savings">
+            <div class="kpi-label">RECOVERABLE SAVINGS</div>
+            <div class="kpi-value" id="kpi3">$0</div>
+            <div class="kpi-sub">this quarter</div>
+          </div>
+          <div class="kpi-card cyan" aria-label="Playbook ROI">
+            <div class="kpi-label">PLAYBOOK ROI</div>
+            <div class="kpi-value" id="kpi4">0x</div>
+            <div class="kpi-sub">estimated return on action</div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="panel">
+            <div class="panel-header">
+              <span class="panel-title">📊 SPEND BY CATEGORY</span>
+            </div>
+            <div class="panel-body" style="height: 220px; display:flex; justify-content:center;">
+              <canvas id="spendDonutChart" aria-label="Spend by category donut chart"></canvas>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">
+              <span class="panel-title">📈 SAVINGS WATERFALL</span>
+            </div>
+            <div class="panel-body" style="height: 220px;">
+              <canvas id="savingsWaterfallChart" aria-label="Savings waterfall bar chart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Agent Status -->
+      <div class="panel" style="height:100%">
+        <div class="panel-header">
+          <span class="panel-title" id="agentStatusTitle">🤖 AGENT ORCHESTRATOR</span>
+        </div>
+        <div class="panel-body">
+          <div class="agent-list" aria-labelledby="agentStatusTitle">
+            <div class="agent-item">
+              <div class="agent-icon" style="background:rgba(255,45,85,0.15);color:var(--danger)" aria-hidden="true">💳</div>
+              <div>
+                <div class="agent-name">Spend Monitor</div>
+                <div class="agent-status-text" id="agentStatus1">Idle — awaiting scan</div>
+              </div>
+              <div class="agent-badge badge-idle" id="agentBadge1">IDLE</div>
+            </div>
+            <div class="agent-item">
+              <div class="agent-icon" style="background:rgba(255,107,53,0.15);color:var(--warn)" aria-hidden="true">📋</div>
+              <div>
+                <div class="agent-name">SLA Guardian</div>
+                <div class="agent-status-text" id="agentStatus2">Monitoring 12 contracts</div>
+              </div>
+              <div class="agent-badge badge-active" id="agentBadge2">ACTIVE</div>
+            </div>
+            <div class="agent-item">
+              <div class="agent-icon" style="background:rgba(0,229,255,0.1);color:var(--accent)" aria-hidden="true">☁️</div>
+              <div>
+                <div class="agent-name">Resource Optimizer</div>
+                <div class="agent-status-text" id="agentStatus3">Analyzing utilization</div>
+              </div>
+              <div class="agent-badge badge-scanning" id="agentBadge3">SCANNING</div>
+            </div>
+            <div class="agent-item">
+              <div class="agent-icon" style="background:rgba(0,230,118,0.1);color:var(--success)" aria-hidden="true">🔁</div>
+              <div>
+                <div class="agent-name">FinOps Reconciler</div>
+                <div class="agent-status-text" id="agentStatus4">Last run: 2h ago</div>
+              </div>
+              <div class="agent-badge badge-active" id="agentBadge4">ACTIVE</div>
+            </div>
+            
+            <div style="margin-top:20px; padding-top:20px; border-top:1px solid var(--border)">
+               <div style="font-family:var(--mono); font-size:10px; color:var(--muted); margin-bottom:12px;">LIVE MULTI-AGENT FEED</div>
+               <div id="liveActivityFeed" style="font-size:11px; color:var(--text2); display:flex; flex-direction:column; gap:8px;" aria-live="polite">
+                  <div style="display:flex; justify-content:space-between;">
+                     <span>System cluster initialized</span>
+                     <span style="opacity:0.5; font-family:var(--mono)">Now</span>
+                  </div>
+               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-bottom:0px;">
+      <!-- Anomaly Table -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">🔍 DETECTED ANOMALIES</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">LIVE FEED</span>
+        </div>
+        <div style="overflow-x:auto; max-height: 380px;">
+          <table class="anomaly-table" aria-label="Detected Spend Anomalies">
+            <thead>
+              <tr>
+                <th>VENDOR</th>
+                <th>TYPE</th>
+                <th>AMOUNT AT RISK</th>
+                <th>SEVERITY</th>
+                <th>ACTION</th>
+              </tr>
+            </thead>
+            <tbody id="anomalyBody">
+              <!-- [U2] Graphical Empty State -->
+              <tr>
+                <td colspan="5" style="text-align:center; padding:48px 20px;">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--border2)" stroke-width="1.5" style="margin-bottom:12px;">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <div style="color:var(--muted); font-family:var(--mono); font-size:12px;">Data pipelines idle.<br>Run a Deep Scan to pull anomalies.</div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="agent-section" style="margin-bottom:0px; display:flex; flex-direction:column; height: 100%;">
+        <div class="agent-section-header">
+          <span class="agent-section-title">⬡ COSTSENTINEL AI</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">Powered by Claude</span>
+        </div>
+        <div class="agent-output" id="agentOutput" style="flex:1;" aria-live="polite">
+          <div class="output-line system">
+            <span class="prefix">SYS</span>
+            <span class="content">CostSentinel cluster online. Awaiting query.</span>
+          </div>
+        </div>
+        <div class="query-bar">
+          <input class="query-input" id="queryInput" placeholder="Press Enter to ask Claude (e.g. 'Summarize cloud waste')" aria-label="AI Query Input" />
+          <button class="send-btn" id="sendBtn" aria-label="Send Query">ANALYZE →</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:24px;"></div>
+
+    <div class="section-label">AUTONOMOUS ACTION PLAYBOOK</div>
+    <div id="playbookContainer">
+      <!-- [U2] Empty State -->
+      <div style="background:var(--surface);border:1px dashed var(--border2);border-radius:10px;padding:48px;text-align:center;">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--border2)" stroke-width="1.5" style="margin-bottom:12px;">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="16" y1="13" x2="8" y2="13"></line>
+          <line x1="16" y1="17" x2="8" y2="17"></line>
+          <polyline points="10 9 9 9 8 9"></polyline>
+        </svg>
+        <div style="color:var(--muted);font-family:var(--mono);font-size:12px;">Awaiting intelligence gathering. Playbooks will generate here.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLA VIEW ==================== -->
+  <div id="view-sla" class="view-panel" role="tabpanel" style="display:none;">
+    <div class="section-label">SLA GUARDIAN DASHBOARD</div>
+    <div class="panel" style="padding:48px; text-align:center;">
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="1.5" style="margin-bottom:20px; opacity:0.6;">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+      </svg>
+      <h3 style="font-family:var(--sans); color:var(--text); margin-bottom:8px;">12 Active Contracts Monitored</h3>
+      <p style="color:var(--muted); font-size:14px; max-width:400px; margin:0 auto;">SLA metrics tracking is running in the background. No contract breaches have been detected in the final 72 hours.</p>
+    </div>
+  </div>
+
+  <!-- ==================== RESOURCES VIEW ==================== -->
+  <div id="view-resources" class="view-panel" role="tabpanel" style="display:none;">
+    <div class="section-label">CLOUD & HARDWARE ASSET OPTIMIZER</div>
+    <div class="panel" style="padding:48px; text-align:center;">
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" style="margin-bottom:20px; opacity:0.6;">
+        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+        <line x1="8" y1="21" x2="16" y2="21"></line>
+        <line x1="12" y1="17" x2="12" y2="21"></line>
+      </svg>
+      <h3 style="font-family:var(--sans); color:var(--text); margin-bottom:8px;">847 Infrastructure Assets</h3>
+      <p style="color:var(--muted); font-size:14px; max-width:400px; margin:0 auto;">Idle capacity detection is active across AWS, Azure, and GCP fleets. Run a Deep Scan to generate infrastructure rightsizing plays.</p>
+    </div>
+  </div>
+
+  <!-- ==================== FINOPS VIEW ==================== -->
+  <div id="view-finops" class="view-panel" role="tabpanel" style="display:none;">
+    <div class="section-label">FINOPS LEDGER RECONCILER</div>
+    
+    <!-- [F3] Data Sources Panel -->
+    <div class="grid-layout-split" style="grid-template-columns: 1fr 1fr;">
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">INTEGRATION HEALTH (DATA SOURCES)</span></div>
+        <div class="panel-body">
+          <ul style="list-style:none; padding:0; display:flex; flex-direction:column; gap:12px;">
+            <li style="display:flex; justify-content:space-between; align-items:center; padding-bottom:12px; border-bottom:1px solid var(--border);">
+              <span style="font-weight:500; display:flex; gap:10px; align-items:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> AWS Cost Explorer</span>
+              <span class="agent-badge badge-active">CONNECTED</span>
+            </li>
+            <li style="display:flex; justify-content:space-between; align-items:center; padding-bottom:12px; border-bottom:1px solid var(--border);">
+              <span style="font-weight:500; display:flex; gap:10px; align-items:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg> Salesforce Admin API</span>
+              <span class="agent-badge badge-active">SYNCING</span>
+            </li>
+            <li style="display:flex; justify-content:space-between; align-items:center; padding-bottom:12px; border-bottom:1px solid var(--border);">
+              <span style="font-weight:500; display:flex; gap:10px; align-items:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg> Oracle NetSuite ERP</span>
+              <span class="agent-badge badge-scanning">POLLING...</span>
+            </li>
+            <li style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-weight:500; display:flex; gap:10px; align-items:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg> Coupa Procurement</span>
+              <span class="agent-badge badge-idle">OFFLINE</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <div class="panel" style="display:flex; flex-direction:column; justify-content:center; align-items:center; background:var(--surface2);">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="1.5" style="margin-bottom:12px;">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        <h4 style="color:var(--text); font-family:var(--mono);">LEDGER RECONCILED</h4>
+        <p style="color:var(--muted); font-size:12px;">All accounts matching ERP truth.</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
